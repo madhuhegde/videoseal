@@ -18,9 +18,8 @@ def main():
     
     # Load INT8 model
     print("\n1. Loading INT8 model...")
-    model_path = Path.home() / "work" / "ai_edge_torch" / "ai-edge-torch" / \
-                 "ai_edge_torch" / "generative" / "examples" / "chunkyseal" / \
-                 "chunkyseal_tflite" / "chunkyseal_detector_chunkyseal_256_int8.tflite"
+    model_path = Path.home() / "work" / "models" / "chunkyseal_tflite" / \
+                 "chunkyseal_detector_chunkyseal_256_int8.tflite"
     
     if not model_path.exists():
         print(f"Error: Model not found at {model_path}")

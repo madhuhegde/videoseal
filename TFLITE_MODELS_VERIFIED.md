@@ -107,7 +107,7 @@ print(f"Message: {result['message']}")  # 1024 bits
 
 **ChunkySeal Models**:
 ```
-/home/madhuhegde/work/ai_edge_torch/.../chunkyseal/chunkyseal_tflite/
+/home/madhuhegde/work/models/chunkyseal_tflite/
 ├── chunkyseal_detector_chunkyseal_256.tflite       (FLOAT32)
 └── chunkyseal_detector_chunkyseal_256_int8.tflite  (INT8)
 ```

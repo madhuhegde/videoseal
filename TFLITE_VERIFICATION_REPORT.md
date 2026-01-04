@@ -122,7 +122,7 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ### ChunkySeal TFLite Models
 ```
-/home/madhuhegde/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/generative/examples/chunkyseal/chunkyseal_tflite/
+/home/madhuhegde/work/models/chunkyseal_tflite/
 ├── chunkyseal_detector_chunkyseal_256.tflite       (FLOAT32, 2951.70 MB)
 └── chunkyseal_detector_chunkyseal_256_int8.tflite  (INT8, 960.00 MB)
 ```
