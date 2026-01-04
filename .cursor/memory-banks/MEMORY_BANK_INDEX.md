@@ -42,7 +42,7 @@ result = detector.detect("watermarked.jpg")
 **Location**: `./chunkyseal-tflite/`  
 **Created**: January 3-4, 2025  
 **Status**: ✅ Complete  
-**Size**: 8 files, 3,341 lines
+**Size**: 9 files, 3,732 lines
 
 **Description**: Comprehensive documentation for the ChunkySeal TFLite implementation - a high-capacity (1024-bit) watermark detector optimized for mobile and edge devices.
 
@@ -55,6 +55,7 @@ result = detector.detect("watermarked.jpg")
 - [conversion.md](./chunkyseal-tflite/conversion.md) - TFLite conversion process (431 lines)
 - [quantization.md](./chunkyseal-tflite/quantization.md) - Quantization options (428 lines)
 - [troubleshooting.md](./chunkyseal-tflite/troubleshooting.md) - Common issues (533 lines)
+- [yaml-analysis.md](./chunkyseal-tflite/yaml-analysis.md) - YAML configuration analysis (391 lines)
 
 **Key Topics**:
 - ConvNeXt-based architecture (no attention)
@@ -70,6 +71,52 @@ detector = load_detector(quantization='int8')
 result = detector.detect("watermarked.jpg")
 ```
 
+---
+
+### 3. Fixed-Size Message Processor (Embedder)
+
+**Location**: `./fixed_msg_embedder/`  
+**Created**: January 4, 2026  
+**Status**: ✅ Complete  
+**Size**: 10 files, 3,721 lines
+
+**Description**: Documentation for the TFLite-compatible fixed-size message processor that enables VideoSeal UNet embedder conversion to TFLite format. This is a major milestone enabling full on-device watermark embedding. Includes INT8 limitation analysis, practical workarounds, and comprehensive comparison between VideoSeal and ChunkySeal embedders.
+
+**Contents**:
+- [overview.md](./fixed_msg_embedder/overview.md) - Problem statement and solution overview (112 lines)
+- [problem-analysis.md](./fixed_msg_embedder/problem-analysis.md) - Detailed error analysis (178 lines)
+- [tensor-dimensions.md](./fixed_msg_embedder/tensor-dimensions.md) - Dimension analysis across models (254 lines)
+- [solution-design.md](./fixed_msg_embedder/solution-design.md) - Implementation design (388 lines)
+- [implementation.md](./fixed_msg_embedder/implementation.md) - Step-by-step implementation guide (466 lines)
+- [usage.md](./fixed_msg_embedder/usage.md) - Usage examples and API reference (453 lines)
+- [troubleshooting.md](./fixed_msg_embedder/troubleshooting.md) - Common issues and solutions (606 lines)
+- [int8-limitation.md](./fixed_msg_embedder/int8-limitation.md) - INT8 quantization limitation analysis (308 lines)
+- [workarounds.md](./fixed_msg_embedder/workarounds.md) - Practical workarounds for INT8 (520 lines)
+- [embedder-conversion.md](./fixed_msg_embedder/embedder-conversion.md) - VideoSeal vs ChunkySeal comparison (436 lines)
+
+**Key Topics**:
+- Dynamic tensor operation elimination
+- Pre-computed indices as buffers
+- Fixed spatial broadcasting with `expand()`
+- Weight transfer from original model
+- TFLite conversion success (90.42 MB FLOAT32)
+- Architecture verification (pure CNN, no attention)
+
+**Quick Start**:
+```python
+from videoseal_models import create_embedder_tflite
+
+# Create TFLite-compatible embedder
+embedder = create_embedder_tflite('videoseal', 256)
+
+# Embed watermark
+imgs = torch.rand(1, 3, 256, 256)
+msgs = torch.randint(0, 2, (1, 256)).float()
+imgs_w = embedder(imgs, msgs)
+```
+
+**Key Achievement**: ✅ **Successful TFLite conversion** of VideoSeal UNet embedder with **0.0 difference** in message processor outputs
+
 ## Memory Bank Structure
 
 Following the documentation rule in `.cursor/rules/documentation.mdc`:
@@ -80,15 +127,26 @@ Following the documentation rule in `.cursor/rules/documentation.mdc`:
 ├── videoseal-tflite/
 │   ├── README.md              # Memory bank overview (references tflite/ docs)
 │   └── overview.md            # High-level introduction
-└── chunkyseal-tflite/
-    ├── README.md              # Memory bank overview
-    ├── overview.md            # High-level introduction
-    ├── architecture.md        # Architecture details
-    ├── implementation.md      # Implementation guide
+├── chunkyseal-tflite/
+│   ├── README.md              # Memory bank overview
+│   ├── overview.md            # High-level introduction
+│   ├── architecture.md        # Architecture details
+│   ├── implementation.md      # Implementation guide
+│   ├── usage.md               # Usage examples
+│   ├── conversion.md          # Conversion process
+│   ├── quantization.md        # Quantization guide
+│   ├── troubleshooting.md     # Troubleshooting guide
+│   └── yaml-analysis.md       # YAML configuration analysis
+└── fixed_msg_embedder/
+    ├── overview.md            # Problem and solution overview
+    ├── problem-analysis.md    # Detailed error analysis
+    ├── tensor-dimensions.md   # Dimension analysis
+    ├── solution-design.md     # Implementation design
+    ├── implementation.md      # Step-by-step guide
     ├── usage.md               # Usage examples
-    ├── conversion.md          # Conversion process
-    ├── quantization.md        # Quantization guide
-    └── troubleshooting.md     # Troubleshooting guide
+    ├── troubleshooting.md     # Common issues
+    ├── int8-limitation.md     # INT8 quantization limitation
+    └── workarounds.md         # Practical INT8 workarounds
 ```
 
 ## Documentation Standards
@@ -182,10 +240,10 @@ touch .cursor/memory-banks/feature-name/usage.md
 ## Statistics
 
 ### Current Memory Banks
-- **Total Banks**: 2
-- **Total Files**: 10
-- **Total Lines**: 3,800+
-- **Total Size**: ~120 KB
+- **Total Banks**: 3
+- **Total Files**: 20
+- **Total Lines**: 7,400+
+- **Total Size**: ~230 KB
 
 ### VideoSeal TFLite Memory Bank
 - **Files**: 2
@@ -194,8 +252,14 @@ touch .cursor/memory-banks/feature-name/usage.md
 - **Status**: Production-ready
 
 ### ChunkySeal TFLite Memory Bank
-- **Files**: 8
-- **Lines**: 3,341
+- **Files**: 9
+- **Lines**: 3,732
+- **Coverage**: Complete (100%)
+- **Status**: Production-ready
+
+### Fixed-Size Message Processor Memory Bank
+- **Files**: 9
+- **Lines**: 3,285
 - **Coverage**: Complete (100%)
 - **Status**: Production-ready
 
@@ -249,10 +313,16 @@ When adding documentation:
 
 ## Version History
 
+- **January 4, 2026**: Added Fixed-Size Message Processor memory bank
+  - Added fixed_msg_embedder/ (9 files, 3,285 lines)
+  - Documented TFLite embedder conversion success
+  - Documented INT8 limitation and workarounds
+  - Total: 3 memory banks, 20 files, 7,400+ lines
+
 - **January 4, 2025**: Created memory bank index
-  - Added ChunkySeal TFLite memory bank (8 files, 3,341 lines)
+  - Added ChunkySeal TFLite memory bank (9 files, 3,732 lines)
   - Added VideoSeal TFLite memory bank (2 files, 500+ lines)
-  - Total: 2 memory banks, 10 files, 3,800+ lines
+  - Total: 2 memory banks, 11 files, 4,200+ lines
 
 ## See Also
 
@@ -262,7 +332,7 @@ When adding documentation:
 
 ---
 
-**Last Updated**: January 4, 2025  
-**Total Memory Banks**: 2  
-**Total Documentation**: 3,800+ lines
+**Last Updated**: January 4, 2026  
+**Total Memory Banks**: 3  
+**Total Documentation**: 7,400+ lines
 

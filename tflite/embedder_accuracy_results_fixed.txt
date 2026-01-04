@@ -1,0 +1,210 @@
+/home/madhuhegde/micromamba/envs/local_tf_env/lib/python3.11/site-packages/tensorflow/lite/python/interpreter.py:457: UserWarning:     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
+    See the [migration guide](https://ai.google.dev/edge/litert/migration)
+    for details.
+    
+  warnings.warn(_INTERPRETER_DELETION_WARNING)
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+Loading models...
+File /home/madhuhegde/work/videoseal/videoseal/ckpts/videoseal_y_256b_img.pth exists, skipping download
+Model loaded successfully from /home/madhuhegde/work/videoseal/videoseal/ckpts/videoseal_y_256b_img.pth with message: <All keys matched successfully>
+✓ PyTorch model loaded
+Loaded TFLite embedder: videoseal_embedder_tflite_256.tflite
+  Quantization: FLOAT32
+  Model size: 90.42 MB
+  Image shape: (np.int32(1), np.int32(3), np.int32(256), np.int32(256))
+  Message shape: (np.int32(1), np.int32(256))
+  Output shape: (np.int32(1), np.int32(3), np.int32(256), np.int32(256))
+✓ TFLite embedder loaded
+Loaded TFLite model: videoseal_detector_videoseal_256_int8.tflite
+  Quantization: INT8
+  Model size: 32.90 MB
+  Input shape: (np.int32(1), np.int32(3), np.int32(256), np.int32(256))
+  Output shape: (np.int32(1), np.int32(257))
+✓ TFLite detector loaded
+
+Creating test images...
+✓ Created 5 test images
+
+================================================================================
+VideoSeal TFLite Embedder Accuracy Test
+================================================================================
+
+================================================================================
+Testing: solid_gray
+================================================================================
+
+1. Embedding Quality:
+   PyTorch PSNR (original → watermarked): 48.23 dB
+   TFLite PSNR (original → watermarked):  42.24 dB
+   PSNR (PyTorch ↔ TFLite outputs):      47.45 dB
+
+2. Pixel Differences:
+   Max difference:  5.00
+   Mean difference: 0.91
+   Std difference:  0.59
+
+3. Detection Results:
+   PyTorch embedder → TFLite detector:
+     Confidence: 0.112
+     Bit accuracy: 81.64%
+   TFLite embedder → TFLite detector:
+     Confidence: 0.107
+     Bit accuracy: 95.31%
+
+4. Performance:
+   PyTorch: 510.18 ms
+   TFLite:  699.33 ms
+   Speedup: 0.73×
+
+5. Verdict:
+   ✅ Outputs are very similar (PSNR > 40 dB)
+   ✅ Excellent detection accuracy (> 95%)
+
+================================================================================
+Testing: gradient
+================================================================================
+
+1. Embedding Quality:
+   PyTorch PSNR (original → watermarked): 49.29 dB
+   TFLite PSNR (original → watermarked):  41.76 dB
+   PSNR (PyTorch ↔ TFLite outputs):      44.65 dB
+
+2. Pixel Differences:
+   Max difference:  5.00
+   Mean difference: 0.92
+   Std difference:  1.18
+
+3. Detection Results:
+   PyTorch embedder → TFLite detector:
+     Confidence: 0.177
+     Bit accuracy: 90.23%
+   TFLite embedder → TFLite detector:
+     Confidence: 0.320
+     Bit accuracy: 100.00%
+
+4. Performance:
+   PyTorch: 441.59 ms
+   TFLite:  695.35 ms
+   Speedup: 0.64×
+
+5. Verdict:
+   ✅ Outputs are very similar (PSNR > 40 dB)
+   ✅ Excellent detection accuracy (> 95%)
+
+================================================================================
+Testing: checkerboard
+================================================================================
+
+1. Embedding Quality:
+   PyTorch PSNR (original → watermarked): 47.56 dB
+   TFLite PSNR (original → watermarked):  41.11 dB
+   PSNR (PyTorch ↔ TFLite outputs):      44.99 dB
+
+2. Pixel Differences:
+   Max difference:  5.00
+   Mean difference: 0.83
+   Std difference:  1.17
+
+3. Detection Results:
+   PyTorch embedder → TFLite detector:
+     Confidence: 0.121
+     Bit accuracy: 75.39%
+   TFLite embedder → TFLite detector:
+     Confidence: 0.060
+     Bit accuracy: 98.05%
+
+4. Performance:
+   PyTorch: 399.11 ms
+   TFLite:  697.06 ms
+   Speedup: 0.57×
+
+5. Verdict:
+   ✅ Outputs are very similar (PSNR > 40 dB)
+   ✅ Excellent detection accuracy (> 95%)
+
+================================================================================
+Testing: noise
+================================================================================
+
+1. Embedding Quality:
+   PyTorch PSNR (original → watermarked): 37.65 dB
+   TFLite PSNR (original → watermarked):  33.57 dB
+   PSNR (PyTorch ↔ TFLite outputs):      40.89 dB
+
+2. Pixel Differences:
+   Max difference:  5.00
+   Mean difference: 2.10
+   Std difference:  0.95
+
+3. Detection Results:
+   PyTorch embedder → TFLite detector:
+     Confidence: 0.031
+     Bit accuracy: 84.77%
+   TFLite embedder → TFLite detector:
+     Confidence: -0.138
+     Bit accuracy: 96.48%
+
+4. Performance:
+   PyTorch: 400.00 ms
+   TFLite:  699.93 ms
+   Speedup: 0.57×
+
+5. Verdict:
+   ✅ Outputs are very similar (PSNR > 40 dB)
+   ✅ Excellent detection accuracy (> 95%)
+
+================================================================================
+Testing: texture
+================================================================================
+
+1. Embedding Quality:
+   PyTorch PSNR (original → watermarked): 50.63 dB
+   TFLite PSNR (original → watermarked):  37.29 dB
+   PSNR (PyTorch ↔ TFLite outputs):      38.48 dB
+
+2. Pixel Differences:
+   Max difference:  5.00
+   Mean difference: 2.34
+   Std difference:  1.94
+
+3. Detection Results:
+   PyTorch embedder → TFLite detector:
+     Confidence: 0.065
+     Bit accuracy: 96.88%
+   TFLite embedder → TFLite detector:
+     Confidence: 0.155
+     Bit accuracy: 98.44%
+
+4. Performance:
+   PyTorch: 352.43 ms
+   TFLite:  707.58 ms
+   Speedup: 0.50×
+
+5. Verdict:
+   ⚠️  Outputs have some differences (PSNR 30-40 dB)
+   ✅ Excellent detection accuracy (> 95%)
+
+================================================================================
+SUMMARY
+================================================================================
+
+| Image | PSNR (PT↔TFL) | PT Acc | TFL Acc | PT Time | TFL Time |
+|-------|---------------|--------|---------|---------|----------|
+| solid_gray    |  47.45 dB |  81.6% |   95.3% | 510.2ms |  699.3ms |
+| gradient      |  44.65 dB |  90.2% |  100.0% | 441.6ms |  695.4ms |
+| checkerboard  |  44.99 dB |  75.4% |   98.0% | 399.1ms |  697.1ms |
+| noise         |  40.89 dB |  84.8% |   96.5% | 400.0ms |  699.9ms |
+| texture       |  38.48 dB |  96.9% |   98.4% | 352.4ms |  707.6ms |
+| AVERAGE       |  43.29 dB |  85.8% |   97.7% | 420.7ms |  699.9ms |
+
+================================================================================
+OVERALL VERDICT
+================================================================================
+✅ TFLite embedder is EXCELLENT!
+   - Very high output similarity
+   - Excellent detection accuracy
+
+Average speedup: 0.60×
+
+================================================================================

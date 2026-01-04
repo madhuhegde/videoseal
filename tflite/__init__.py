@@ -4,10 +4,16 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-TFLite inference module for VideoSeal watermark detection.
+TFLite inference module for VideoSeal watermark embedding and detection.
 """
 
-from .detector import VideoSealDetectorTFLite
+from .detector import VideoSealDetectorTFLite, load_detector
+from .embedder import VideoSealEmbedderTFLite, load_embedder
 
-__all__ = ['VideoSealDetectorTFLite']
+__all__ = [
+    'VideoSealDetectorTFLite',
+    'VideoSealEmbedderTFLite',
+    'load_detector',
+    'load_embedder',
+]
 

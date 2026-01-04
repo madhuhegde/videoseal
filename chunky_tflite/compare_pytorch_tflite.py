@@ -293,7 +293,6 @@ def main():
     if args.tflite_model is None:
         # Try to find the model in common locations
         possible_paths = [
-            Path.home() / "work" / "models" / "chunkyseal_tflite",
             Path.home() / "work" / "ai_edge_torch" / "ai-edge-torch" / 
                 "ai_edge_torch" / "generative" / "examples" / "chunkyseal" / "chunkyseal_tflite",
             Path("./chunkyseal_tflite"),
