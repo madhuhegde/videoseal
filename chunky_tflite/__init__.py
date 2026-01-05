@@ -27,9 +27,12 @@ Example:
 """
 
 from .detector import ChunkySealDetectorTFLite, load_detector
+from .embedder import ChunkySealEmbedderTFLite, load_embedder
 
 __all__ = [
     'ChunkySealDetectorTFLite',
+    'ChunkySealEmbedderTFLite',
     'load_detector',
+    'load_embedder',
 ]
 
