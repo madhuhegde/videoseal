@@ -5,10 +5,25 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-VideoSeal TFLite Detector for watermark detection and extraction.
+VideoSeal 0.0 TFLite Detector for watermark detection and extraction.
 
-This module provides a TFLite-based implementation of the VideoSeal detector
-for efficient on-device watermark detection.
+VideoSeal 0.0 is a legacy baseline model with 96-bit message capacity.
+This is a smaller, faster alternative to VideoSeal 1.0 (256-bit).
+
+**Status**: ✅ Production Ready (FLOAT32)
+
+Features:
+- 96-bit message extraction (vs 256-bit in VideoSeal 1.0)
+- Model size: 94.66 MB FLOAT32 (vs 127.57 MB)
+- Detection accuracy: 96.88% (validated)
+- Faster inference
+
+Example:
+    >>> from videoseal.tflite import load_detector00
+    >>> detector = load_detector00()
+    >>> result = detector.detect("watermarked.jpg")
+    >>> print(f"Confidence: {result['confidence']:.3f}")
+    >>> print(f"Message: {result['message'][:32]}")
 """
 
 import os
@@ -27,21 +42,19 @@ except ImportError:
     )
 
 
-class VideoSealDetectorTFLite:
+class VideoSeal00DetectorTFLite:
     """
-    TFLite-based VideoSeal Detector for watermark detection.
+    TFLite-based VideoSeal 0.0 Detector for watermark detection.
     
-    This detector can:
-    - Detect if an image contains a watermark
-    - Extract the embedded 256-bit message
-    - Run efficiently on mobile and edge devices
+    VideoSeal 0.0 uses 96-bit messages (vs 256-bit in VideoSeal 1.0).
+    This makes it smaller and faster while maintaining good accuracy.
     
     Args:
         model_path: Path to the TFLite model file
         image_size: Expected input image size (default: 256)
     
     Example:
-        >>> detector = VideoSealDetectorTFLite("videoseal_detector_videoseal_256.tflite")
+        >>> detector = VideoSeal00DetectorTFLite("videoseal00_detector_256.tflite")
         >>> img = Image.open("watermarked.jpg")
         >>> results = detector.detect(img)
         >>> print(f"Confidence: {results['confidence']:.3f}")
@@ -61,12 +74,19 @@ class VideoSealDetectorTFLite:
         """
         self.model_path = Path(model_path)
         self.image_size = image_size
+        self.nbits = 96  # VideoSeal 0.0 uses 96-bit messages
         
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model not found: {self.model_path}")
         
         # Detect quantization type from filename
         self.quantization = self._detect_quantization()
+        
+        # Warn about INT8 issues
+        if self.quantization == 'INT8':
+            print("⚠️  Warning: INT8 detector may have compatibility issues")
+            print("   See INT8_BATCH_MATMUL_ISSUE.md for details")
+            print("   Recommended: Use FLOAT32 detector")
         
         # Load TFLite model
         self.interpreter = tf.lite.Interpreter(model_path=str(self.model_path))
@@ -85,14 +105,24 @@ class VideoSealDetectorTFLite:
                 f"but got {actual_shape}"
             )
         
+        # Validate output shape (1 confidence + 96 message bits)
+        expected_output_shape = (1, 97)
+        actual_output_shape = tuple(self.output_details[0]['shape'])
+        if actual_output_shape != expected_output_shape:
+            raise ValueError(
+                f"Model expects output shape {expected_output_shape}, "
+                f"but got {actual_output_shape}"
+            )
+        
         # Get model size
         model_size_mb = self.model_path.stat().st_size / (1024 * 1024)
         
-        print(f"Loaded TFLite model: {self.model_path.name}")
+        print(f"Loaded VideoSeal 0.0 TFLite detector: {self.model_path.name}")
         print(f"  Quantization: {self.quantization}")
         print(f"  Model size: {model_size_mb:.2f} MB")
+        print(f"  Message capacity: {self.nbits} bits")
         print(f"  Input shape: {actual_shape}")
-        print(f"  Output shape: {tuple(self.output_details[0]['shape'])}")
+        print(f"  Output shape: {actual_output_shape}")
     
     def preprocess_image(
         self,
@@ -105,7 +135,7 @@ class VideoSealDetectorTFLite:
             image: Input image (PIL Image, numpy array, or path)
         
         Returns:
-            Preprocessed image array of shape (1, 3, H, W) in [0, 1] range
+            Preprocessed image array of shape (1, H, W, 3) in [0, 1] range (NHWC format)
         """
         # Load image if path is provided
         if isinstance(image, (str, Path)):
@@ -141,9 +171,9 @@ class VideoSealDetectorTFLite:
             Quantization type: 'INT8', 'FP16', or 'FLOAT32'
         """
         filename = self.model_path.name.lower()
-        if '_int8' in filename:
+        if '_int8' in filename or 'int8' in filename:
             return 'INT8'
-        elif '_fp16' in filename:
+        elif '_fp16' in filename or 'fp16' in filename:
             return 'FP16'
         else:
             return 'FLOAT32'
@@ -160,9 +190,11 @@ class VideoSealDetectorTFLite:
         return {
             'model_name': self.model_path.name,
             'model_path': str(self.model_path),
+            'model_version': 'VideoSeal 0.0',
             'quantization': self.quantization,
             'model_size_mb': model_size_mb,
             'image_size': self.image_size,
+            'nbits': self.nbits,
             'input_shape': tuple(self.input_details[0]['shape']),
             'output_shape': tuple(self.output_details[0]['shape']),
             'input_dtype': str(self.input_details[0]['dtype']),
@@ -184,7 +216,7 @@ class VideoSealDetectorTFLite:
         Returns:
             Dictionary containing:
                 - confidence: Detection confidence score
-                - message: Binary message (256 bits)
+                - message: Binary message (96 bits)
                 - message_logits: Raw logits for message bits
                 - predictions: Full prediction array
         """
@@ -309,65 +341,92 @@ class VideoSealDetectorTFLite:
     
     def __repr__(self) -> str:
         return (
-            f"VideoSealDetectorTFLite("
+            f"VideoSeal00DetectorTFLite("
             f"model={self.model_path.name}, "
             f"quantization={self.quantization}, "
-            f"image_size={self.image_size})"
+            f"image_size={self.image_size}, "
+            f"nbits={self.nbits})"
         )
 
 
-def load_detector(
+def load_detector00(
     model_path: Optional[Union[str, Path]] = None,
-    model_name: str = "videoseal",
     image_size: int = 256,
     quantization: Optional[str] = None,
     models_dir: Optional[Union[str, Path]] = None
-) -> VideoSealDetectorTFLite:
+) -> VideoSeal00DetectorTFLite:
     """
-    Load a VideoSeal TFLite detector.
+    Load a VideoSeal 0.0 TFLite detector.
+    
+    VideoSeal 0.0 is a legacy baseline model with 96-bit message capacity.
+    It's smaller and faster than VideoSeal 1.0 (256-bit).
     
     Args:
         model_path: Direct path to model file (overrides other args)
-        model_name: Model variant name ('videoseal', 'pixelseal', 'chunkyseal')
-        image_size: Image size the model was trained on
-        quantization: Quantization type ('int8', 'fp16', or None for FLOAT32)
+        image_size: Image size the model was trained on (default: 256)
+        quantization: Quantization type (None for FLOAT32, 'int8', 'fp16')
+                     Note: INT8 has known issues (BATCH_MATMUL), use FLOAT32
         models_dir: Directory containing TFLite models
+                   (default: ~/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/
+                             generative/examples/videoseal0.0/videoseal00_tflite/)
     
     Returns:
-        Loaded VideoSealDetectorTFLite instance
+        Loaded VideoSeal00DetectorTFLite instance
     
     Example:
         >>> # Load FLOAT32 model from default location
-        >>> detector = load_detector()
-        
-        >>> # Load INT8 quantized model
-        >>> detector = load_detector(quantization='int8')
-        
-        >>> # Load specific variant with INT8
-        >>> detector = load_detector(model_name='pixelseal', quantization='int8')
+        >>> detector = load_detector00()
         
         >>> # Load from custom path
-        >>> detector = load_detector(model_path='/path/to/model.tflite')
+        >>> detector = load_detector00(
+        ...     model_path='/path/to/videoseal00_detector_256.tflite'
+        ... )
+        
+        >>> # Detect watermark
+        >>> result = detector.detect("watermarked.jpg")
+        >>> print(f"Confidence: {result['confidence']:.3f}")
+        >>> print(f"Message: {result['message'][:32]}")
     """
     if model_path is None:
         # Auto-detect model path
         if models_dir is None:
-            models_dir = Path.home() / "work" / "models" / "videoseal_tflite"
+            # Default to ai-edge-torch conversion output
+            models_dir = (
+                Path.home() / "work" / "ai_edge_torch" / "ai-edge-torch" /
+                "ai_edge_torch" / "generative" / "examples" / "videoseal0.0" /
+                "videoseal00_tflite"
+            )
         else:
             models_dir = Path(models_dir)
         
-        # Build filename with optional quantization suffix
+        # Warn about INT8
+        if quantization == 'int8':
+            print("⚠️  Warning: INT8 detector has known issues (BATCH_MATMUL)")
+            print("   Attempting to load, but may fail at runtime")
+            print("   Recommended: Use FLOAT32 detector (94.66 MB, 96.88% accuracy)")
+            print("   See: INT8_BATCH_MATMUL_ISSUE.md for details")
+        
+        # Build filename
         quant_suffix = f"_{quantization}" if quantization else ""
-        model_filename = f"videoseal_detector_{model_name}_{image_size}{quant_suffix}.tflite"
+        model_filename = f"videoseal00_detector_{image_size}{quant_suffix}.tflite"
         model_path = models_dir / model_filename
         
-        # If quantized model not found, try FLOAT32
+        # If not found, try without quantization suffix
         if not model_path.exists() and quantization:
             print(f"Warning: {quantization.upper()} model not found, trying FLOAT32...")
-            model_filename = f"videoseal_detector_{model_name}_{image_size}.tflite"
+            model_filename = f"videoseal00_detector_{image_size}.tflite"
             model_path = models_dir / model_filename
     else:
         model_path = Path(model_path)
     
-    return VideoSealDetectorTFLite(model_path, image_size)
-
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Model not found: {model_path}\n\n"
+            f"Expected location: {models_dir}\n"
+            f"Expected filename: videoseal00_detector_256.tflite\n\n"
+            f"To generate the model, run:\n"
+            f"  cd ~/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/generative/examples/videoseal0.0\n"
+            f"  python convert_detector_to_tflite.py --output_dir ./videoseal00_tflite"
+        )
+    
+    return VideoSeal00DetectorTFLite(model_path, image_size)

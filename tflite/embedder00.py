@@ -5,21 +5,24 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-VideoSeal TFLite Embedder for watermark embedding.
+VideoSeal 0.0 TFLite Embedder for watermark embedding.
 
-⚠️  **CURRENT STATUS**: NOT FUNCTIONAL
+VideoSeal 0.0 is a legacy baseline model with 96-bit message capacity.
+This is a smaller, faster alternative to VideoSeal 1.0 (256-bit).
 
-The embedder converts successfully to TFLite (90.42 MB FLOAT32) but fails
-during loading due to TFLite BROADCAST_TO operation limitations.
+**Status**: ✅ Production Ready (FLOAT32)
 
-**Recommended Alternatives**:
-1. Use PyTorch embedder: videoseal.load('videoseal_1.0')
-2. Hybrid architecture: Server PyTorch embed + Mobile TFLite detect
+Features:
+- 96-bit message capacity (vs 256-bit in VideoSeal 1.0)
+- Smaller model size: 63.81 MB (vs 90.42 MB)
+- Faster inference
+- PSNR: ~46 dB (invisible watermark)
 
-See: tflite/EMBEDDER_STATUS.md for details
-
-This module is provided for reference and future use when TFLite resolves
-the BROADCAST_TO issue.
+Example:
+    >>> from videoseal.tflite import load_embedder00
+    >>> embedder = load_embedder00()
+    >>> message = np.random.randint(0, 2, 96)
+    >>> img_w = embedder.embed("original.jpg", message)
 """
 
 import os
@@ -38,23 +41,21 @@ except ImportError:
     )
 
 
-class VideoSealEmbedderTFLite:
+class VideoSeal00EmbedderTFLite:
     """
-    TFLite-based VideoSeal Embedder for watermark embedding.
+    TFLite-based VideoSeal 0.0 Embedder for watermark embedding.
     
-    This embedder can:
-    - Embed a 256-bit message into an image
-    - Run efficiently on mobile and edge devices
-    - Maintain visual quality of the watermarked image
+    VideoSeal 0.0 uses 96-bit messages (vs 256-bit in VideoSeal 1.0).
+    This makes it smaller and faster while maintaining good quality.
     
     Args:
         model_path: Path to the TFLite model file
         image_size: Expected input image size (default: 256)
     
     Example:
-        >>> embedder = VideoSealEmbedderTFLite("videoseal_embedder_tflite_256.tflite")
+        >>> embedder = VideoSeal00EmbedderTFLite("videoseal00_embedder_256.tflite")
         >>> img = Image.open("original.jpg")
-        >>> message = np.random.randint(0, 2, 256)
+        >>> message = np.random.randint(0, 2, 96)
         >>> img_w = embedder.embed(img, message)
         >>> img_w.save("watermarked.jpg")
     """
@@ -72,7 +73,7 @@ class VideoSealEmbedderTFLite:
         """
         self.model_path = Path(model_path)
         self.image_size = image_size
-        self.nbits = 256  # VideoSeal uses 256-bit messages
+        self.nbits = 96  # VideoSeal 0.0 uses 96-bit messages
         
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model not found: {self.model_path}")
@@ -90,7 +91,7 @@ class VideoSealEmbedderTFLite:
         
         # Validate input shapes
         # Input 0: Image [1, 256, 256, 3] (NHWC format)
-        # Input 1: Message [1, 256]
+        # Input 1: Message [1, 96]
         expected_img_shape = (1, image_size, image_size, 3)
         expected_msg_shape = (1, self.nbits)
         
@@ -112,9 +113,10 @@ class VideoSealEmbedderTFLite:
         # Get model size
         model_size_mb = self.model_path.stat().st_size / (1024 * 1024)
         
-        print(f"Loaded TFLite embedder: {self.model_path.name}")
+        print(f"Loaded VideoSeal 0.0 TFLite embedder: {self.model_path.name}")
         print(f"  Quantization: {self.quantization}")
         print(f"  Model size: {model_size_mb:.2f} MB")
+        print(f"  Message capacity: {self.nbits} bits")
         print(f"  Image shape: {actual_img_shape}")
         print(f"  Message shape: {actual_msg_shape}")
         print(f"  Output shape: {tuple(self.output_details[0]['shape'])}")
@@ -140,7 +142,7 @@ class VideoSealEmbedderTFLite:
             image: Input image (PIL Image, numpy array, or path)
         
         Returns:
-            Preprocessed image as numpy array [1, 3, H, W] in range [0, 1]
+            Preprocessed image as numpy array [1, H, W, 3] in range [0, 1] (NHWC format)
         """
         # Load image if path
         if isinstance(image, (str, Path)):
@@ -184,7 +186,7 @@ class VideoSealEmbedderTFLite:
             message: Binary message (numpy array, list, or binary string)
         
         Returns:
-            Preprocessed message as numpy array [1, 256] with float32 values
+            Preprocessed message as numpy array [1, 96] with float32 values
         """
         # Convert binary string to array
         if isinstance(message, str):
@@ -241,16 +243,16 @@ class VideoSealEmbedderTFLite:
         
         Args:
             image: Input image (PIL Image, numpy array, or path)
-            message: Binary message (256 bits)
+            message: Binary message (96 bits)
             return_pil: If True, return PIL Image; otherwise numpy array
         
         Returns:
             Watermarked image (PIL Image or numpy array)
         
         Example:
-            >>> embedder = VideoSealEmbedderTFLite("videoseal_embedder_tflite_256.tflite")
+            >>> embedder = VideoSeal00EmbedderTFLite("videoseal00_embedder_256.tflite")
             >>> img = Image.open("original.jpg")
-            >>> message = np.random.randint(0, 2, 256)
+            >>> message = np.random.randint(0, 2, 96)
             >>> img_w = embedder.embed(img, message)
             >>> img_w.save("watermarked.jpg")
         """
@@ -288,16 +290,16 @@ class VideoSealEmbedderTFLite:
         
         Args:
             images: List of images
-            messages: Array of messages [N, 256] or list of messages
+            messages: Array of messages [N, 96] or list of messages
             return_pil: If True, return PIL Images; otherwise numpy arrays
         
         Returns:
             List of watermarked images
         
         Example:
-            >>> embedder = VideoSealEmbedderTFLite("videoseal_embedder_tflite_256.tflite")
+            >>> embedder = VideoSeal00EmbedderTFLite("videoseal00_embedder_256.tflite")
             >>> images = [Image.open(f"img{i}.jpg") for i in range(5)]
-            >>> messages = np.random.randint(0, 2, (5, 256))
+            >>> messages = np.random.randint(0, 2, (5, 96))
             >>> imgs_w = embedder.embed_batch(images, messages)
         """
         if isinstance(messages, list):
@@ -316,10 +318,34 @@ class VideoSealEmbedderTFLite:
         
         return results
     
+    def get_model_info(self) -> Dict[str, Union[str, int, float]]:
+        """
+        Get information about the loaded model.
+        
+        Returns:
+            Dictionary with model information
+        """
+        model_size_mb = self.model_path.stat().st_size / (1024 * 1024)
+        
+        return {
+            'model_name': self.model_path.name,
+            'model_path': str(self.model_path),
+            'model_version': 'VideoSeal 0.0',
+            'quantization': self.quantization,
+            'model_size_mb': model_size_mb,
+            'image_size': self.image_size,
+            'nbits': self.nbits,
+            'input_shape': tuple(self.input_details[0]['shape']),
+            'message_shape': tuple(self.input_details[1]['shape']),
+            'output_shape': tuple(self.output_details[0]['shape']),
+            'input_dtype': str(self.input_details[0]['dtype']),
+            'output_dtype': str(self.output_details[0]['dtype'])
+        }
+    
     def __repr__(self) -> str:
         """String representation."""
         return (
-            f"VideoSealEmbedderTFLite(\n"
+            f"VideoSeal00EmbedderTFLite(\n"
             f"  model={self.model_path.name},\n"
             f"  quantization={self.quantization},\n"
             f"  image_size={self.image_size},\n"
@@ -328,82 +354,87 @@ class VideoSealEmbedderTFLite:
         )
 
 
-def load_embedder(
-    model_name: str = "videoseal",
-    quantization: str = "float32",
-    model_dir: Optional[Union[str, Path]] = None
-) -> VideoSealEmbedderTFLite:
+def load_embedder00(
+    model_path: Optional[Union[str, Path]] = None,
+    image_size: int = 256,
+    quantization: Optional[str] = None,
+    models_dir: Optional[Union[str, Path]] = None
+) -> VideoSeal00EmbedderTFLite:
     """
-    Load a VideoSeal TFLite embedder model.
+    Load a VideoSeal 0.0 TFLite embedder model.
     
-    ⚠️  **IMPORTANT**: VideoSeal TFLite embedder is currently NOT FUNCTIONAL
-    due to TFLite BROADCAST_TO operation limitations. The model converts
-    successfully but fails during tensor allocation.
-    
-    **Recommended Alternatives**:
-    1. Use PyTorch embedder (videoseal.load()) - Full functionality
-    2. Hybrid architecture: Server-side PyTorch embed + Mobile TFLite detect
-    3. Wait for TFLite BROADCAST_TO fix or model architecture changes
+    VideoSeal 0.0 is a legacy baseline model with 96-bit message capacity.
+    It's smaller and faster than VideoSeal 1.0 (256-bit).
     
     Args:
-        model_name: Model name (default: "videoseal")
-        quantization: Quantization type - "float32", "int8", or "fp16"
-                     Note: ALL quantization types are affected
-        model_dir: Directory containing TFLite models
-                  (default: ~/work/models/videoseal_tflite)
+        model_path: Direct path to model file (overrides other args)
+        image_size: Image size the model was trained on (default: 256)
+        quantization: Quantization type (None for FLOAT32, 'int8', 'fp16')
+                     Note: INT8 not supported for embedder
+        models_dir: Directory containing TFLite models
+                   (default: ~/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/
+                             generative/examples/videoseal0.0/videoseal00_tflite/)
     
     Returns:
-        VideoSealEmbedderTFLite instance (will fail on initialization)
+        VideoSeal00EmbedderTFLite instance
     
-    Raises:
-        RuntimeError: BROADCAST_TO operation not supported
-    
-    See Also:
-        - Documentation: .cursor/memory-banks/fixed_msg_embedder/int8-limitation.md
-        - Workarounds: .cursor/memory-banks/fixed_msg_embedder/workarounds.md
+    Example:
+        >>> # Load FLOAT32 model from default location
+        >>> embedder = load_embedder00()
+        
+        >>> # Load from custom path
+        >>> embedder = load_embedder00(
+        ...     model_path='/path/to/videoseal00_embedder_256.tflite'
+        ... )
+        
+        >>> # Embed watermark
+        >>> message = np.random.randint(0, 2, 96)
+        >>> img_w = embedder.embed("original.jpg", message)
     """
-    # Default model directory
-    if model_dir is None:
-        model_dir = Path.home() / "work" / "models" / "videoseal_tflite"
+    if model_path is None:
+        # Auto-detect model path
+        if models_dir is None:
+            # Default to ai-edge-torch conversion output
+            models_dir = (
+                Path.home() / "work" / "ai_edge_torch" / "ai-edge-torch" /
+                "ai_edge_torch" / "generative" / "examples" / "videoseal0.0" /
+                "videoseal00_tflite"
+            )
+        else:
+            models_dir = Path(models_dir)
+        
+        # Warn about INT8
+        if quantization == 'int8':
+            raise ValueError(
+                "INT8 quantization is not supported for VideoSeal 0.0 embedder.\n"
+                "Use FLOAT32 instead (63.81 MB, PSNR 46.56 dB).\n\n"
+                "For mobile deployment, consider:\n"
+                "1. Use FLOAT32 embedder (63.81 MB)\n"
+                "2. Use FP16 if available (~32 MB)\n"
+                "3. Use hybrid architecture (server embed + mobile detect)"
+            )
+        
+        # Build filename
+        quant_suffix = f"_{quantization}" if quantization else ""
+        model_filename = f"videoseal00_embedder_{image_size}{quant_suffix}.tflite"
+        model_path = models_dir / model_filename
+        
+        # If not found, try without quantization suffix
+        if not model_path.exists() and quantization:
+            print(f"Warning: {quantization.upper()} model not found, trying FLOAT32...")
+            model_filename = f"videoseal00_embedder_{image_size}.tflite"
+            model_path = models_dir / model_filename
     else:
-        model_dir = Path(model_dir)
+        model_path = Path(model_path)
     
-    # Validate quantization
-    quantization = quantization.lower()
-    if quantization not in ["float32", "int8", "fp16"]:
-        raise ValueError(
-            f"Invalid quantization: {quantization}. "
-            f"Must be 'float32', 'int8', or 'fp16'"
-        )
-    
-    # Warn about INT8
-    if quantization == "int8":
-        raise ValueError(
-            "INT8 quantization is not supported for VideoSeal embedder due to "
-            "TFLite BROADCAST_TO operation limitations. Use 'float32' instead.\n\n"
-            "For mobile deployment, consider:\n"
-            "1. Use FLOAT32 embedder (90.42 MB)\n"
-            "2. Use FP16 if available (~45 MB)\n"
-            "3. Use hybrid architecture (server embed + mobile detect)\n\n"
-            "See documentation: .cursor/memory-banks/fixed_msg_embedder/int8-limitation.md"
-        )
-    
-    # Construct model filename
-    if quantization == "float32":
-        model_filename = f"{model_name}_embedder_tflite_256.tflite"
-    else:
-        model_filename = f"{model_name}_embedder_tflite_256_{quantization}.tflite"
-    
-    model_path = model_dir / model_filename
-    
-    # Check if model exists
     if not model_path.exists():
         raise FileNotFoundError(
             f"Model not found: {model_path}\n\n"
-            f"Available models in {model_dir}:\n" +
-            "\n".join(f"  - {f.name}" for f in model_dir.glob("*.tflite"))
-            if model_dir.exists() else f"Directory does not exist: {model_dir}"
+            f"Expected location: {models_dir}\n"
+            f"Expected filename: videoseal00_embedder_256.tflite\n\n"
+            f"To generate the model, run:\n"
+            f"  cd ~/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/generative/examples/videoseal0.0\n"
+            f"  python convert_embedder_to_tflite.py --output_dir ./videoseal00_tflite"
         )
     
-    return VideoSealEmbedderTFLite(model_path)
-
+    return VideoSeal00EmbedderTFLite(model_path, image_size)

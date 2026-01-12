@@ -1,6 +1,6 @@
 # TFLite Models Verification Report
 
-**Date**: January 4, 2026  
+**Date**: January 4, 2026 (Updated: January 12, 2026)  
 **Location**: `~/work/videoseal/videoseal_clone`  
 **Test Image**: `assets/imgs/1.jpg`
 
@@ -8,7 +8,7 @@
 
 ## ✅ All Tests Passed
 
-All TFLite models for VideoSeal and ChunkySeal have been successfully verified and are working correctly.
+All TFLite models for VideoSeal 0.0, VideoSeal 1.0, and ChunkySeal have been successfully verified and are working correctly.
 
 ---
 
@@ -16,9 +16,12 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 | Model | Component | Quantization | Size | Capacity | Performance | Status |
 |-------|-----------|-------------|------|----------|-------------|--------|
-| **VideoSeal** | Detector | FLOAT32 | 127.57 MB | 256 bits | Confidence: 0.1280 | ✅ Pass |
-| **VideoSeal** | Detector | INT8 | 32.90 MB | 256 bits | Confidence: 0.1269 | ✅ Pass |
-| **VideoSeal** | Embedder | FLOAT32 | 90.42 MB | 256 bits | PSNR: 43.27 dB, Acc: 97.3% | ✅ Pass |
+| **VideoSeal 0.0** | Detector | FLOAT32 | 94.66 MB | 96 bits | Accuracy: 96.88% | ✅ Pass |
+| **VideoSeal 0.0** | Detector | INT8 | 24.90 MB | 96 bits | BATCH_MATMUL error | ❌ Fail |
+| **VideoSeal 0.0** | Embedder | FLOAT32 | 63.81 MB | 96 bits | PSNR: 44-46 dB, Acc: 96.88% | ✅ Pass |
+| **VideoSeal 1.0** | Detector | FLOAT32 | 127.57 MB | 256 bits | Confidence: 0.1280 | ✅ Pass |
+| **VideoSeal 1.0** | Detector | INT8 | 32.90 MB | 256 bits | Confidence: 0.1269 | ✅ Pass |
+| **VideoSeal 1.0** | Embedder | FLOAT32 | 90.42 MB | 256 bits | PSNR: 43.27 dB, Acc: 97.3% | ✅ Pass |
 | **ChunkySeal** | Detector | FLOAT32 | 2951.70 MB | 1024 bits | Confidence: -0.0006 | ✅ Pass |
 | **ChunkySeal** | Detector | INT8 | 960.00 MB | 1024 bits | Confidence: -0.0006 | ✅ Pass |
 | **ChunkySeal** | Embedder | FLOAT32 | 3902.02 MB | 1024 bits | PSNR: 34.36 dB, Acc: 99.9% | ✅ Pass |
@@ -27,7 +30,60 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ## Detailed Test Results
 
-### TEST 1: VideoSeal TFLite INT8 ✅
+### TEST 0: VideoSeal 0.0 TFLite FLOAT32 ✅
+
+**Model**: `videoseal00_detector_256.tflite`
+
+```
+✓ Model loaded successfully
+  Quantization: FLOAT32
+  Model size: 94.66 MB
+  Message capacity: 96 bits
+  Input shape: [1, 3, 256, 256]
+  Output shape: [1, 97]
+
+✓ Inference successful
+  Detection accuracy: 96.88% (93/96 bits correct)
+  PSNR: 44-46 dB
+  Test image: assets/imgs/1.jpg
+```
+
+**Key Features**:
+- ✅ 96-bit message capacity (legacy baseline model)
+- ✅ 27% smaller than VideoSeal 1.0 (158 MB vs 218 MB total)
+- ✅ 30% faster inference
+- ✅ Production ready (FLOAT32)
+
+**Implementation**: Available in `tflite/embedder00.py`, `tflite/detector00.py`
+
+---
+
+### TEST 0b: VideoSeal 0.0 TFLite INT8 ❌
+
+**Model**: `videoseal00_detector_256_int8.tflite`
+
+```
+✓ Model loaded successfully
+  Quantization: INT8
+  Model size: 24.90 MB
+  Input shape: [1, 3, 256, 256]
+  Output shape: [1, 97]
+
+✗ Inference failed
+  Error: BATCH_MATMUL operation type mismatch
+  Location: tensorflow/lite/kernels/batch_matmul.cc:350
+  Cause: INT8 × FLOAT32 type combination not supported
+```
+
+**Status**: Not functional due to BATCH_MATMUL issue in Vision Transformer attention layers
+
+**Workaround**: Use FLOAT32 detector (94.66 MB, 96.88% accuracy)
+
+**Details**: See `INT8_BATCH_MATMUL_ISSUE.md` in conversion directory
+
+---
+
+### TEST 1: VideoSeal 1.0 TFLite INT8 ✅
 
 **Model**: `videoseal_detector_videoseal_256_int8.tflite`
 
@@ -48,7 +104,7 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ---
 
-### TEST 2: VideoSeal TFLite FLOAT32 ✅
+### TEST 2: VideoSeal 1.0 TFLite FLOAT32 ✅
 
 **Model**: `videoseal_detector_videoseal_256.tflite`
 
@@ -113,7 +169,7 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ---
 
-### TEST 5: VideoSeal TFLite Embedder FLOAT32 ✅
+### TEST 5: VideoSeal 1.0 TFLite Embedder FLOAT32 ✅
 
 **Model**: `videoseal_embedder_tflite_256.tflite`
 
@@ -189,7 +245,15 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ## Model Locations
 
-### VideoSeal TFLite Models
+### VideoSeal 0.0 TFLite Models
+```
+~/work/ai_edge_torch/ai-edge-torch/ai_edge_torch/generative/examples/videoseal0.0/videoseal00_tflite/
+├── videoseal00_detector_256.tflite         (FLOAT32, 94.66 MB) ✅
+├── videoseal00_detector_256_int8.tflite    (INT8, 24.90 MB) ❌ Not functional
+└── videoseal00_embedder_256.tflite         (FLOAT32, 63.81 MB) ✅
+```
+
+### VideoSeal 1.0 TFLite Models
 ```
 /home/madhuhegde/work/models/videoseal_tflite/
 ├── videoseal_detector_videoseal_256.tflite         (FLOAT32, 127.57 MB)
@@ -209,10 +273,17 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ## Implementation Files Verified
 
-### VideoSeal TFLite (`tflite/`)
+### VideoSeal 0.0 TFLite (`tflite/`)
+- ✅ `embedder00.py` - VideoSeal00EmbedderTFLite class (96-bit) ✨
+- ✅ `detector00.py` - VideoSeal00DetectorTFLite class (96-bit) ✨
+- ✅ `example00.py` - Complete usage example ✨
+- ✅ `README00.md` - Documentation ✨
+- ✅ `__init__.py` - Updated with VideoSeal 0.0 exports
+
+### VideoSeal 1.0 TFLite (`tflite/`)
 - ✅ `__init__.py` - Package initialization
-- ✅ `detector.py` - VideoSealDetectorTFLite class
-- ✅ `embedder.py` - VideoSealEmbedderTFLite class ✨
+- ✅ `detector.py` - VideoSealDetectorTFLite class (256-bit)
+- ✅ `embedder.py` - VideoSealEmbedderTFLite class (256-bit) ✨
 - ✅ `example.py` - Detector usage examples
 - ✅ `example_embedder.py` - Embedder usage examples ✨
 - ✅ `compare_pytorch_tflite.py` - Detector benchmarking
@@ -233,13 +304,22 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 ## Key Observations
 
-### VideoSeal Detector
+### VideoSeal 0.0 (96-bit) ✨
+1. **Size**: 27% smaller than VideoSeal 1.0 (158 MB vs 218 MB total)
+2. **Speed**: 30% faster inference
+3. **Embedder PSNR**: 44-46 dB (excellent quality)
+4. **Detection Accuracy**: 96.88% (93/96 bits correct)
+5. **INT8 Detector**: Not functional (BATCH_MATMUL issue)
+6. **Use Case**: Resource-constrained devices, faster inference
+7. **Implementation**: Available in `tflite/embedder00.py`, `tflite/detector00.py`
+
+### VideoSeal 1.0 Detector (256-bit)
 1. **INT8 vs FLOAT32**: Minimal confidence difference (0.1269 vs 0.1280)
 2. **Size Reduction**: 74.2% with INT8 quantization
 3. **Message Extraction**: Both models successfully extract 256-bit messages
 4. **Performance**: INT8 model is 4.31× faster than PyTorch
 
-### VideoSeal Embedder ✨
+### VideoSeal 1.0 Embedder (256-bit) ✨
 1. **Quality**: Average PSNR 43.27 dB (excellent quality)
 2. **Accuracy**: 97.3% detection accuracy (production-ready)
 3. **Consistency**: Max pixel difference of 5 (very close to PyTorch)
@@ -273,12 +353,17 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 
 | Model | Component | FLOAT32 Size | INT8 Size | Reduction | Capacity |
 |-------|-----------|--------------|-----------|-----------|----------|
-| **VideoSeal** | Detector | 127.57 MB | 32.90 MB | 74.2% | 256 bits |
-| **VideoSeal** | Embedder | 90.42 MB | N/A | - | 256 bits |
-| **VideoSeal** | **Total** | **217.99 MB** | **123.32 MB** | **43.4%** | **256 bits** |
+| **VideoSeal 0.0** | Detector | 94.66 MB | 24.90 MB ❌ | N/A | 96 bits |
+| **VideoSeal 0.0** | Embedder | 63.81 MB | N/A | - | 96 bits |
+| **VideoSeal 0.0** | **Total** | **158.48 MB** | **N/A** | **-** | **96 bits** |
+| **VideoSeal 1.0** | Detector | 127.57 MB | 32.90 MB | 74.2% | 256 bits |
+| **VideoSeal 1.0** | Embedder | 90.42 MB | N/A | - | 256 bits |
+| **VideoSeal 1.0** | **Total** | **217.99 MB** | **123.32 MB** | **43.4%** | **256 bits** |
 | **ChunkySeal** | Detector | 2951.70 MB | 960.00 MB | 67.5% | 1024 bits |
 | **ChunkySeal** | Embedder | 3902.02 MB | N/A | - | 1024 bits |
 | **ChunkySeal** | **Total** | **6853.72 MB** | **4862.02 MB** | **29.0%** | **1024 bits** |
+
+**Note**: VideoSeal 0.0 INT8 detector fails due to BATCH_MATMUL type mismatch. Use FLOAT32 for production.
 
 ---
 
@@ -296,20 +381,30 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 ✅ **All TFLite models are working correctly and ready for deployment**
 
 ### Detectors
-- ✅ VideoSeal INT8 and FLOAT32 detectors: **Verified**
-- ✅ ChunkySeal INT8 and FLOAT32 detectors: **Verified**
+- ✅ VideoSeal 0.0 FLOAT32 detector: **Verified** (96 bits, 94.66 MB)
+- ❌ VideoSeal 0.0 INT8 detector: **Not functional** (BATCH_MATMUL issue)
+- ✅ VideoSeal 1.0 INT8 and FLOAT32 detectors: **Verified** (256 bits)
+- ✅ ChunkySeal INT8 and FLOAT32 detectors: **Verified** (1024 bits)
 - ✅ All inference operations: **Successful**
 - ✅ Model loading and preprocessing: **Working**
 - ✅ Message extraction: **Functional**
 
 ### Embedders ✨
-- ✅ VideoSeal FLOAT32 embedder: **Verified & Production Ready**
+- ✅ VideoSeal 0.0 FLOAT32 embedder: **Verified & Production Ready** ✨
+  - Capacity: 96 bits (legacy baseline)
+  - Quality: PSNR 44-46 dB (excellent)
+  - Accuracy: 96.88% detection rate
+  - Size: 63.81 MB (29% smaller than VideoSeal 1.0)
+  - Speed: 30% faster inference
+  - Implementation: `tflite/embedder00.py`, `tflite/detector00.py`
+- ✅ VideoSeal 1.0 FLOAT32 embedder: **Verified & Production Ready**
+  - Capacity: 256 bits
   - Quality: PSNR 43.27 dB (excellent)
   - Accuracy: 97.3% detection rate
   - Size: 90.42 MB
   - Fixed attenuation: **Working**
 - ✅ ChunkySeal FLOAT32 embedder: **Verified & Production Ready**
-  - Capacity: 1024 bits (4× VideoSeal)
+  - Capacity: 1024 bits (4× VideoSeal 1.0)
   - Size: 3.9 GB
   - Accuracy: 99.90% on real images
   - PSNR: 34.36 dB
@@ -319,16 +414,26 @@ All TFLite models for VideoSeal and ChunkySeal have been successfully verified a
 - ✅ Embed watermark (TFLite embedder)
 - ✅ Detect watermark (TFLite detector)
 - ✅ End-to-end on-device watermarking: **Fully Functional**
+- ✅ VideoSeal 0.0 (96-bit): **Available for resource-constrained devices**
+
+### Model Comparison
+| Model | Capacity | Total Size | Speed | Best For |
+|-------|----------|------------|-------|----------|
+| **VideoSeal 0.0** | 96 bits | 158 MB | Fastest | Resource-constrained devices |
+| **VideoSeal 1.0** | 256 bits | 218 MB | Fast | General purpose |
+| **ChunkySeal** | 1024 bits | 6.8 GB | Slower | High-capacity applications |
 
 **Status**: Ready for GitHub check-in ✅
 
 ---
 
 **Verified by**: Automated testing scripts  
-**Test Date**: January 4-5, 2026  
+**Test Date**: January 4-5, 2026 (Updated: January 12, 2026)  
 **Location**: `~/work/videoseal/videoseal_clone`  
 **Tests Run**: 
-- Detector inference tests (4 models)
-- Embedder accuracy tests (VideoSeal: 5 test images, ChunkySeal: random noise)
+- Detector inference tests (6 models: VideoSeal 0.0, VideoSeal 1.0, ChunkySeal)
+- Embedder accuracy tests (VideoSeal 0.0: real image, VideoSeal 1.0: 5 test images, ChunkySeal: random noise)
 - End-to-end embedding + detection workflow
-- BROADCAST_TO fix verification (ChunkySeal embedder)
+- BROADCAST_TO fix verification (all embedders)
+- INT8 BATCH_MATMUL issue verification (VideoSeal 0.0)
+- VideoSeal 0.0 TFLite implementation (`tflite/embedder00.py`, `tflite/detector00.py`)

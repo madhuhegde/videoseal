@@ -10,6 +10,33 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class SafeReflectionPad2d(nn.Module):
+    """
+    TFLite-friendly implementation of ReflectionPad2d(1) using slice + concat.
+    This avoids GATHER_ND operations in TFLite conversion.
+    Only supports padding=1.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        # x shape: [B, C, H, W]
+        
+        # 1. Pad Width (Left and Right)
+        # Reflect boundary: column 1 is used for reflection of column 0
+        left_pad = x[:, :, :, 1:2]   # Slice column 1
+        right_pad = x[:, :, :, -2:-1] # Slice column -2
+        x = torch.cat([left_pad, x, right_pad], dim=3)
+        
+        # 2. Pad Height (Top and Bottom)
+        # Reflect boundary: row 1 is used for reflection of row 0
+        top_pad = x[:, :, 1:2, :]     # Slice row 1
+        bottom_pad = x[:, :, -2:-1, :] # Slice row -2
+        x = torch.cat([top_pad, x, bottom_pad], dim=2)
+        
+        return x
+
+
 class Upsample(nn.Module):
 
     def __init__(
@@ -37,7 +64,7 @@ class Upsample(nn.Module):
         if upscale_type == 'nearest':
             upsample_block = nn.Sequential(
                 nn.Upsample(scale_factor=up_factor, mode='nearest'),
-                nn.ReflectionPad2d(1),
+                SafeReflectionPad2d(),
                 nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=0, bias=bias),
                 LayerNorm(out_channels, data_format="channels_first"),
                 activation(),
@@ -45,7 +72,7 @@ class Upsample(nn.Module):
         elif upscale_type == 'bilinear':
             upsample_block = nn.Sequential(
                 nn.Upsample(scale_factor=up_factor, mode='bilinear', align_corners=bias),
-                nn.ReflectionPad2d(1),
+                SafeReflectionPad2d(),
                 nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=0, bias=bias),
                 LayerNorm(out_channels, data_format="channels_first"),
                 activation(),
