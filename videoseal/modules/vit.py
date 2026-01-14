@@ -339,20 +339,80 @@ class Attention(nn.Module):
             self.rel_pos_w = nn.Parameter(torch.zeros(2 * input_size[1] - 1, head_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, H, W, _ = x.shape
-        # qkv with shape (3, B, nHead, H * W, C)
-        qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        # q, k, v with shape (B * nHead, H * W, C)
-        q, k, v = qkv.reshape(3, B * self.num_heads, H * W, -1).unbind(0)
+        B, H, W, C = x.shape
+        head_dim = C // self.num_heads
+        
+        # Compute qkv: (B, H*W, 3*C) -> split into q, k, v without creating 5D tensor
+        qkv = self.qkv(x)  # (B, H*W, 3*C)
+        # Split into q, k, v: (B, H*W, C) each
+        qkv = qkv.reshape(B, H * W, 3, C)
+        qkv = qkv.permute(2, 0, 1, 3)  # (3, B, H*W, C) - 4D max
+        q, k, v = qkv[0], qkv[1], qkv[2]  # Each: (B, H*W, C)
+        
+        # Reshape to separate heads: (B, H*W, num_heads, head_dim)
+        q = q.reshape(B, H * W, self.num_heads, head_dim)
+        k = k.reshape(B, H * W, self.num_heads, head_dim)
+        v = v.reshape(B, H * W, self.num_heads, head_dim)
+        
+        # Transpose to (B, num_heads, H*W, head_dim) for easier computation
+        q = q.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
+        k = k.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
+        v = v.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
+        
+        # Flatten batch and heads: (B*num_heads, H*W, head_dim)
+        q_flat = q.reshape(B * self.num_heads, H * W, head_dim)
+        k_flat = k.reshape(B * self.num_heads, H * W, head_dim)
+        v_flat = v.reshape(B * self.num_heads, H * W, head_dim)
 
-        attn = (q * self.scale) @ k.transpose(-2, -1)
+        attn = (q_flat * self.scale) @ k_flat.transpose(-2, -1)  # (B*num_heads, H*W, H*W)
 
         if self.use_rel_pos:
-            attn = add_decomposed_rel_pos(attn, q, self.rel_pos_h, self.rel_pos_w, (H, W), (H, W))
+            # Process each head separately for relative position embeddings
+            # Reshape attn from (B * num_heads, H*W, H*W) to (B, num_heads, H*W, H*W)
+            attn = attn.reshape(B, self.num_heads, H * W, H * W)
+            # Reshape q from (B, num_heads, H*W, head_dim) - already in this shape
+            q_for_rel = q.reshape(B, self.num_heads, H * W, head_dim)
+            
+            # Process each head
+            attn_heads = []
+            for h in range(self.num_heads):
+                attn_h = add_decomposed_rel_pos(
+                    attn[:, h],  # (B, H*W, H*W)
+                    q_for_rel[:, h],  # (B, H*W, head_dim)
+                    self.rel_pos_h,
+                    self.rel_pos_w,
+                    (H, W),
+                    (H, W)
+                )
+                attn_heads.append(attn_h)
+            
+            # Stack heads: (B, num_heads, H*W, H*W) - still 4D
+            attn = torch.stack(attn_heads, dim=1)
+            # Reshape back to (B * num_heads, H*W, H*W) for matmul with v
+            attn = attn.reshape(B * self.num_heads, H * W, H * W)
 
         attn = attn.softmax(dim=-1)
-        x = (attn @ v).view(B, self.num_heads, H, W, -1).permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
-        x = self.proj(x)
+        
+        # x (output) calculation, avoiding 5D and 6D tensors
+        # Using UVQ-style approach: break down operations into 4D-only steps
+        x = (attn @ v_flat)  # (B * num_heads, H*W, head_dim)
+        
+        # Reshape to (B, num_heads, H*W, head_dim) - 4D
+        x = x.reshape(B, self.num_heads, H * W, head_dim)
+        
+        # Permute heads and spatial: (B, H*W, num_heads, head_dim) - 4D
+        x = x.permute(0, 2, 1, 3).contiguous()  # (B, H*W, num_heads, head_dim)
+        
+        # Reshape to (B, H, W, C) - 4D
+        x = x.reshape(B, H, W, C)
+        
+        # Apply projection using UVQ-style 4D-only approach to avoid 6D tensors
+        # Flatten batch and spatial dimensions to 2D for linear layer
+        # This ensures TFLite converter doesn't create intermediate 6D tensors
+        B_orig, H_orig, W_orig, C_orig = x.shape
+        x_flat = x.reshape(B_orig * H_orig * W_orig, C_orig)  # (B*H*W, C) - 2D
+        x_flat = self.proj(x_flat)  # (B*H*W, C) - 2D, linear layer on 2D tensor
+        x = x_flat.reshape(B_orig, H_orig, W_orig, C_orig)  # (B, H, W, C) - 4D
 
         return x
 
@@ -360,6 +420,8 @@ class Attention(nn.Module):
 def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:
     """
     Partition into non-overlapping windows with padding if needed.
+    TFLite-friendly version that avoids 6D tensors.
+    
     Args:
         x (tensor): input tokens with [B, H, W, C].
         window_size (int): window size.
@@ -376,9 +438,23 @@ def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, t
         x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
     Hp, Wp = H + pad_h, W + pad_w
 
-    x = x.view(B, Hp // window_size, window_size, Wp // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
-    return windows, (Hp, Wp)
+    # TFLite-friendly: Use reshape instead of view to avoid 6D tensors
+    # Original: view(B, Hp//ws, ws, Wp//ws, ws, C) -> 6D
+    # New approach: Use 4D operations throughout
+    
+    num_windows_h = Hp // window_size
+    num_windows_w = Wp // window_size
+
+    # Reshape to (B * num_windows_h, window_size, Wp, C)
+    x = x.reshape(B * num_windows_h, window_size, Wp, C)
+
+    # Permute to (B * num_windows_h, Wp, window_size, C)
+    x = x.permute(0, 2, 1, 3).contiguous()
+
+    # Reshape to (B * num_windows_h * num_windows_w, window_size, window_size, C)
+    x = x.reshape(B * num_windows_h * num_windows_w, window_size, window_size, C)
+    
+    return x, (Hp, Wp)
 
 
 def window_unpartition(
@@ -386,6 +462,8 @@ def window_unpartition(
 ) -> torch.Tensor:
     """
     Window unpartition into original sequences and removing padding.
+    TFLite-friendly version that avoids 5D and 6D tensors using pure 4D operations.
+    
     Args:
         windows (tensor): input tokens with [B * num_windows, window_size, window_size, C].
         window_size (int): window size.
@@ -397,9 +475,35 @@ def window_unpartition(
     """
     Hp, Wp = pad_hw
     H, W = hw
-    B = windows.shape[0] // (Hp * Wp // window_size // window_size)
-    x = windows.view(B, Hp // window_size, Wp // window_size, window_size, window_size, -1)
-    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, Hp, Wp, -1)
+    C = windows.shape[-1]
+    
+    num_windows_h = Hp // window_size
+    num_windows_w = Wp // window_size
+    B = windows.shape[0] // (num_windows_h * num_windows_w)
+
+    # Pure 4D approach: Process windows to avoid 5D/6D tensors entirely
+    # Input: (B * num_windows_h * num_windows_w, window_size, window_size, C)
+    # Goal: (B, Hp, Wp, C) where Hp = num_windows_h * window_size, Wp = num_windows_w * window_size
+    
+    # Strategy: Use only 4D operations by processing windows in a way that never creates 5D tensors
+    # The key is to use view/reshape operations that directly map to 4D shapes
+    
+    # Step 1: Reshape to group by batch and window rows, flattening window columns
+    # From (B * num_windows_h * num_windows_w, window_size, window_size, C)
+    # To (B * num_windows_h, num_windows_w * window_size, window_size, C)
+    # This groups windows in each row and flattens them horizontally - all 4D
+    # We achieve this by viewing the data as rows of concatenated windows
+    total_windows = B * num_windows_h * num_windows_w
+    x = windows.reshape(total_windows, window_size * window_size, C)  # Flatten spatial dims: 3D
+    x = x.reshape(B * num_windows_h, num_windows_w, window_size * window_size, C)  # Group by rows: 4D
+    x = x.reshape(B * num_windows_h, num_windows_w * window_size, window_size, C)  # Flatten window columns: 4D
+    
+    # Step 2: Permute to interleave window rows vertically: (B * num_windows_h, window_size, num_windows_w * window_size, C)
+    x = x.permute(0, 2, 1, 3).contiguous()
+    
+    # Step 3: Reshape to final dimensions: (B, Hp, Wp, C)
+    # Combine B * num_windows_h and window_size to get Hp = num_windows_h * window_size
+    x = x.reshape(B, num_windows_h * window_size, num_windows_w * window_size, C)
 
     if Hp > H or Wp > W:
         x = x[:, :H, :W, :].contiguous()
@@ -449,9 +553,11 @@ def add_decomposed_rel_pos(
 ) -> torch.Tensor:
     """
     Calculate decomposed Relative Positional Embeddings from :paper:`mvitv2`.
+    TFLite-friendly version that avoids 5D tensors.
+    
     https://github.com/facebookresearch/mvit/blob/19786631e330df9f3622e5402b4a419a263a2c80/mvit/models/attention.py   # noqa B950
     Args:
-        attn (Tensor): attention map.
+        attn (Tensor): attention map with shape (B, q_h * q_w, k_h * k_w).
         q (Tensor): query q in the attention layer with shape (B, q_h * q_w, C).
         rel_pos_h (Tensor): relative position embeddings (Lh, C) for height axis.
         rel_pos_w (Tensor): relative position embeddings (Lw, C) for width axis.
@@ -463,17 +569,34 @@ def add_decomposed_rel_pos(
     """
     q_h, q_w = q_size
     k_h, k_w = k_size
-    Rh = get_rel_pos(q_h, k_h, rel_pos_h)  # q_h q_w C
-    Rw = get_rel_pos(q_w, k_w, rel_pos_w)  # q_h q_w C
+    Rh = get_rel_pos(q_h, k_h, rel_pos_h)  # (q_h, k_h, C)
+    Rw = get_rel_pos(q_w, k_w, rel_pos_w)  # (q_w, k_w, C)
 
     B, _, dim = q.shape
-    r_q = q.reshape(B, q_h, q_w, dim)  # B q_h q_w C
-    rel_h = torch.einsum("bhwc,hkc->bhwk", r_q, Rh)  
-    rel_w = torch.einsum("bhwc,wkc->bhwk", r_q, Rw)
+    r_q = q.reshape(B, q_h, q_w, dim)  # (B, q_h, q_w, C)
+    
+    # Compute relative position biases using einsum
+    rel_h = torch.einsum("bhwc,hkc->bhwk", r_q, Rh)  # (B, q_h, q_w, k_h)
+    rel_w = torch.einsum("bhwc,wkc->bhwk", r_q, Rw)  # (B, q_h, q_w, k_w)
 
-    attn = (
-        attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:, :, :, :, None] + rel_w[:, :, :, None, :]
-    ).view(B, q_h * q_w, k_h * k_w)
+    # TFLite-friendly: Avoid 5D tensors by using 4D operations
+    # Original: attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:,:,:,:,None] + rel_w[:,:,:,None,:]
+    # New approach: Expand and add in 4D space
+    
+    # Reshape attn from (B, q_h*q_w, k_h*k_w) to (B*q_h, q_w, k_h, k_w)
+    attn = attn.reshape(B * q_h, q_w, k_h, k_w)
+    
+    # Reshape rel_h from (B, q_h, q_w, k_h) to (B*q_h, q_w, k_h, 1) and expand
+    rel_h = rel_h.reshape(B * q_h, q_w, k_h, 1).expand(-1, -1, -1, k_w)
+    
+    # Reshape rel_w from (B, q_h, q_w, k_w) to (B*q_h, q_w, 1, k_w) and expand
+    rel_w = rel_w.reshape(B * q_h, q_w, 1, k_w).expand(-1, -1, k_h, -1)
+    
+    # Add relative position biases
+    attn = attn + rel_h + rel_w
+    
+    # Reshape back to (B, q_h*q_w, k_h*k_w)
+    attn = attn.reshape(B, q_h * q_w, k_h * k_w)
 
     return attn
 
