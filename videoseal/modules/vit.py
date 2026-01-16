@@ -193,15 +193,17 @@ class Block(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
-        # Window partition
-        if self.window_size > 0:
-            H, W = x.shape[1], x.shape[2]
-            x, pad_hw = window_partition(x, self.window_size)
+        # Window partition - DISABLED for TFLite HW delegate compatibility
+        # The HW delegate does not support the specific transpose patterns generated
+        # by window_partition/window_unpartition. Using global attention instead.
+        # if self.window_size > 0:
+        #     H, W = x.shape[1], x.shape[2]
+        #     x, pad_hw = window_partition(x, self.window_size)
 
         x = self.attn(x)
-        # Reverse window partition
-        if self.window_size > 0:
-            x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+        # Reverse window partition - DISABLED for TFLite HW delegate compatibility
+        # if self.window_size > 0:
+        #     x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
         x = shortcut + x
         x = x + self.mlp(self.norm2(x))
@@ -341,78 +343,65 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, H, W, C = x.shape
         head_dim = C // self.num_heads
+        N = H * W  # Number of tokens
         
-        # Compute qkv: (B, H*W, 3*C) -> split into q, k, v without creating 5D tensor
-        qkv = self.qkv(x)  # (B, H*W, 3*C)
-        # Split into q, k, v: (B, H*W, C) each
-        qkv = qkv.reshape(B, H * W, 3, C)
-        qkv = qkv.permute(2, 0, 1, 3)  # (3, B, H*W, C) - 4D max
-        q, k, v = qkv[0], qkv[1], qkv[2]  # Each: (B, H*W, C)
+        # HW Delegate Compatible: Transpose-free attention implementation
+        # The HW delegate rejects permute operations with patterns [1,3,0,2] and [2,0,3,1]
+        # This implementation uses only reshape and einsum to avoid ALL transpose operations
         
-        # Reshape to separate heads: (B, H*W, num_heads, head_dim)
-        q = q.reshape(B, H * W, self.num_heads, head_dim)
-        k = k.reshape(B, H * W, self.num_heads, head_dim)
-        v = v.reshape(B, H * W, self.num_heads, head_dim)
+        # Compute qkv and split without permute: (B, N, 3, C) -> 3 x (B, N, C)
+        qkv = self.qkv(x)  # (B, H, W, 3*C)
+        qkv = qkv.reshape(B, N, 3, C)  # (B, N, 3, C)
+        q, k, v = qkv[:, :, 0], qkv[:, :, 1], qkv[:, :, 2]  # Each: (B, N, C)
         
-        # Transpose to (B, num_heads, H*W, head_dim) for easier computation
-        q = q.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
-        k = k.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
-        v = v.permute(0, 2, 1, 3)  # (B, num_heads, H*W, head_dim)
+        # Reshape to separate heads WITHOUT permute: (B, N, num_heads, head_dim)
+        q = q.reshape(B, N, self.num_heads, head_dim)
+        k = k.reshape(B, N, self.num_heads, head_dim)
+        v = v.reshape(B, N, self.num_heads, head_dim)
         
-        # Flatten batch and heads: (B*num_heads, H*W, head_dim)
-        q_flat = q.reshape(B * self.num_heads, H * W, head_dim)
-        k_flat = k.reshape(B * self.num_heads, H * W, head_dim)
-        v_flat = v.reshape(B * self.num_heads, H * W, head_dim)
-
-        attn = (q_flat * self.scale) @ k_flat.transpose(-2, -1)  # (B*num_heads, H*W, H*W)
-
+        # Compute attention using einsum (no transpose needed)
+        # einsum 'bnhd,bmhd->bnmh' computes attention for all heads in parallel
+        # b=batch, n=query_tokens, m=key_tokens, h=heads, d=head_dim
+        attn = torch.einsum('bnhd,bmhd->bnmh', q * self.scale, k)  # (B, N, N, num_heads)
+        
         if self.use_rel_pos:
-            # Process each head separately for relative position embeddings
-            # Reshape attn from (B * num_heads, H*W, H*W) to (B, num_heads, H*W, H*W)
-            attn = attn.reshape(B, self.num_heads, H * W, H * W)
-            # Reshape q from (B, num_heads, H*W, head_dim) - already in this shape
-            q_for_rel = q.reshape(B, self.num_heads, H * W, head_dim)
-            
-            # Process each head
-            attn_heads = []
+            # Add relative positional embeddings
+            # Need to process per head for compatibility with add_decomposed_rel_pos
+            attn_list = []
             for h in range(self.num_heads):
+                # Extract attention for this head: (B, N, N)
+                attn_h = attn[:, :, :, h]
+                # Extract q for this head: (B, N, head_dim)
+                q_h = q[:, :, h, :]
+                # Add relative position bias
                 attn_h = add_decomposed_rel_pos(
-                    attn[:, h],  # (B, H*W, H*W)
-                    q_for_rel[:, h],  # (B, H*W, head_dim)
+                    attn_h,
+                    q_h,
                     self.rel_pos_h,
                     self.rel_pos_w,
                     (H, W),
                     (H, W)
                 )
-                attn_heads.append(attn_h)
-            
-            # Stack heads: (B, num_heads, H*W, H*W) - still 4D
-            attn = torch.stack(attn_heads, dim=1)
-            # Reshape back to (B * num_heads, H*W, H*W) for matmul with v
-            attn = attn.reshape(B * self.num_heads, H * W, H * W)
-
-        attn = attn.softmax(dim=-1)
+                attn_list.append(attn_h)
+            # Stack back: (B, N, N, num_heads)
+            attn = torch.stack(attn_list, dim=3)
         
-        # x (output) calculation, avoiding 5D and 6D tensors
-        # Using UVQ-style approach: break down operations into 4D-only steps
-        x = (attn @ v_flat)  # (B * num_heads, H*W, head_dim)
+        attn = attn.softmax(dim=2)  # Softmax over key dimension
         
-        # Reshape to (B, num_heads, H*W, head_dim) - 4D
-        x = x.reshape(B, self.num_heads, H * W, head_dim)
+        # Apply attention to values using einsum (no transpose needed)
+        # einsum 'bnmh,bmhd->bnhd' applies attention weights to values
+        x = torch.einsum('bnmh,bmhd->bnhd', attn, v)  # (B, N, num_heads, head_dim)
         
-        # Permute heads and spatial: (B, H*W, num_heads, head_dim) - 4D
-        x = x.permute(0, 2, 1, 3).contiguous()  # (B, H*W, num_heads, head_dim)
+        # Reshape to merge heads: (B, N, C)
+        x = x.reshape(B, N, C)
         
-        # Reshape to (B, H, W, C) - 4D
+        # Reshape back to spatial: (B, H, W, C)
         x = x.reshape(B, H, W, C)
         
-        # Apply projection using UVQ-style 4D-only approach to avoid 6D tensors
-        # Flatten batch and spatial dimensions to 2D for linear layer
-        # This ensures TFLite converter doesn't create intermediate 6D tensors
-        B_orig, H_orig, W_orig, C_orig = x.shape
-        x_flat = x.reshape(B_orig * H_orig * W_orig, C_orig)  # (B*H*W, C) - 2D
-        x_flat = self.proj(x_flat)  # (B*H*W, C) - 2D, linear layer on 2D tensor
-        x = x_flat.reshape(B_orig, H_orig, W_orig, C_orig)  # (B, H, W, C) - 4D
+        # Apply projection (flatten to 2D for linear layer)
+        x_flat = x.reshape(B * H * W, C)
+        x_flat = self.proj(x_flat)
+        x = x_flat.reshape(B, H, W, C)
 
         return x
 

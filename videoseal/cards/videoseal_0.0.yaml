@@ -96,7 +96,7 @@ extractor:
       window_size: 8
       mlp_ratio: 4
       qkv_bias: true
-      use_rel_pos: true
+      use_rel_pos: false  # Disabled for HW delegate compatibility (rel pos creates unsupported transposes)
     pixel_decoder:
       pixelwise: false
       upscale_stages:
